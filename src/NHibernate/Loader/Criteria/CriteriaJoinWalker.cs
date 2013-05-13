@@ -181,7 +181,7 @@ namespace NHibernate.Loader.Criteria
 			// NH: really not used (we are using a different ctor to support SubQueryCriteria)
 		}
 
-		protected override SqlString GetWithClause(string path)
+		protected override SqlString[] GetWithClause(string path)
 		{
 			return translator.GetWithClause(path, EnabledFilters);
 		}

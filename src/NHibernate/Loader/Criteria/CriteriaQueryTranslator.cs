@@ -242,26 +242,64 @@ namespace NHibernate.Loader.Criteria
 
 		public bool IsJoin(string path)
 		{
+            if (!path.Contains("|"))
+            {
+                return associationPathCriteriaMap.Keys.Any(key =>
+                    {
+                        if (key.Contains("|"))
+                        {
+                            return key.EndsWith("|" + path);
+                        }
+                        return key == path;
+                    });
+            }
 			return associationPathCriteriaMap.ContainsKey(path);
 		}
 
 		public JoinType GetJoinType(string path)
 		{
 			JoinType result;
-			if (associationPathJoinTypesMap.TryGetValue(path, out result))
-			{
-				return result;
-			}
-			else
-			{
-				return JoinType.InnerJoin;
-			}
+
+            if (path.Contains("|"))
+            {
+                if (associationPathJoinTypesMap.TryGetValue(path, out result))
+                {
+                    return result;
+                }
+            }
+            else
+            {
+                result = associationPathJoinTypesMap.FirstOrDefault(kv =>
+                    {
+                        if (kv.Key.Contains("|"))
+                        {
+                            return kv.Key.EndsWith("|" + path);
+                        }
+                        return kv.Key == path;
+                    }).Value;
+            }
+
+		    return result == null ? JoinType.InnerJoin : result;
 		}
 
 		public ICriteria GetCriteria(string path)
 		{
 			ICriteria result;
-			associationPathCriteriaMap.TryGetValue(path, out result);
+            if (!path.Contains("|"))
+            {
+                result = associationPathCriteriaMap.FirstOrDefault(kv =>
+                    {
+                        if (kv.Key.Contains("|"))
+                        {
+                            return kv.Key.EndsWith("|" + path);
+                        }
+                        return kv.Key == path;
+                    }).Value;
+            }
+            else
+            {
+                associationPathCriteriaMap.TryGetValue(path, out result);
+            }
 			logger.DebugFormat("getCriteria for path={0} crit={1}", path, result);
 			return result;
 		}
@@ -290,7 +328,8 @@ namespace NHibernate.Loader.Criteria
 		{
 			foreach (CriteriaImpl.Subcriteria crit in rootCriteria.IterateSubcriteria())
 			{
-				string wholeAssociationPath = GetWholeAssociationPath(crit);
+			    string wholeAssociationPath = (string.IsNullOrEmpty(crit.Alias) ? string.Empty : crit.Alias + "|") +
+			                                  GetWholeAssociationPath(crit);
 				try
 				{
 					associationPathCriteriaMap.Add(wholeAssociationPath, crit);
@@ -313,7 +352,7 @@ namespace NHibernate.Loader.Criteria
 				{
 					if (crit.WithClause != null)
 					{
-						withClauseMap.Add(wholeAssociationPath, crit.WithClause);
+					    withClauseMap.Add(wholeAssociationPath, crit.WithClause);
 					}
 				}
 				catch (ArgumentException ae)
@@ -374,7 +413,7 @@ namespace NHibernate.Loader.Criteria
 
 			foreach (KeyValuePair<string, ICriteria> me in associationPathCriteriaMap)
 			{
-				ICriteriaInfoProvider info = GetPathInfo(me.Key);
+				ICriteriaInfoProvider info = GetPathInfo(GetPath(me.Key));
 				criteriaInfoMap.Add(me.Value, info);
 				nameCriteriaInfoMap[info.Name] =  info;
 			}
@@ -385,7 +424,7 @@ namespace NHibernate.Loader.Criteria
 		{
 			foreach (KeyValuePair<string, ICriteria> me in associationPathCriteriaMap)
 			{
-				NHibernate_Persister_Entity.IJoinable joinable = GetPathJoinable(me.Key);
+				NHibernate_Persister_Entity.IJoinable joinable = GetPathJoinable(GetPath(me.Key));
 				if (joinable != null && joinable.IsCollection)
 				{
 					criteriaCollectionPersisters.Add((ICollectionPersister)joinable);
@@ -489,6 +528,11 @@ namespace NHibernate.Loader.Criteria
 				provider.Name, path, provider.GetType().Name);
 			return provider;
 		}
+
+        private string GetPath(string key)
+        {
+            return key.Contains("|") ? key.Split("|".ToArray())[1] : key;
+        }
 
 		private void CreateCriteriaSQLAliasMap()
 		{
@@ -704,14 +748,19 @@ namespace NHibernate.Loader.Criteria
 			return propertyName;
 		}
 
-		public SqlString GetWithClause(string path, IDictionary<string, IFilter> enabledFilters)
+		public SqlString[] GetWithClause(string path, IDictionary<string, IFilter> enabledFilters)
 		{
-			if (withClauseMap.ContainsKey(path))
-			{
-				ICriterion crit = (ICriterion)withClauseMap[path];
-				return crit == null ? null : crit.ToSqlString(GetCriteria(path), this, enabledFilters);
-			}
-			return null;
+		    var sqls = new List<SqlString>();
+            foreach (var key in withClauseMap.Keys.Where(p=>p.EndsWith(path)))
+		    {
+                ICriterion crit = (ICriterion)withClauseMap[key];
+                sqls.Add(crit == null ? null : crit.ToSqlString(GetCriteria(key), this, enabledFilters));
+		    }
+            if (sqls.Count == 0)
+            {
+                sqls.Add(SqlString.Empty);
+            }
+            return sqls.ToArray();
 		}
 
 		#region NH specific

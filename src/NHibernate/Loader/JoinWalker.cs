@@ -140,9 +140,9 @@ namespace NHibernate.Loader
 			}
 		}
 
-		protected virtual SqlString GetWithClause(string path)
+		protected virtual SqlString[] GetWithClause(string path)
 		{
-			return SqlString.Empty;
+            return new SqlString[] { SqlString.Empty };
 		}
 
 		/// <summary>
@@ -156,10 +156,13 @@ namespace NHibernate.Loader
 
 			string subalias = GenerateTableAlias(associations.Count + 1, path, joinable);
 
-			OuterJoinableAssociation assoc =
-				new OuterJoinableAssociation(type, alias, aliasedLhsColumns, subalias, joinType, GetWithClause(path), Factory, enabledFilters);
-			assoc.ValidateJoin(path);
-			AddAssociation(subalias, assoc);
+            foreach (var sqlString in GetWithClause(path))
+		    {
+                OuterJoinableAssociation assoc =
+                    new OuterJoinableAssociation(type, alias, aliasedLhsColumns, subalias, joinType, sqlString, Factory, enabledFilters);
+                assoc.ValidateJoin(path);
+                AddAssociation(subalias, assoc);
+            }
 
 			int nextDepth = currentDepth + 1;
 
