@@ -32,7 +32,7 @@ namespace NHibernate.Loader.Collection
 			elementPersister = (IOuterJoinLoadable)oneToManyPersister.ElementPersister;
 			string alias = GenerateRootAlias(oneToManyPersister.Role);
 
-			WalkEntityTree(elementPersister, alias);
+			WalkEntityTree(elementPersister, alias, alias);
 
 			IList<OuterJoinableAssociation> allAssociations = new List<OuterJoinableAssociation>(associations);
 			allAssociations.Add(

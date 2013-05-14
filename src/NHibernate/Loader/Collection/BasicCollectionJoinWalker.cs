@@ -23,7 +23,7 @@ namespace NHibernate.Loader.Collection
 			this.collectionPersister = collectionPersister;
 			string alias = GenerateRootAlias(collectionPersister.Role);
 
-			WalkCollectionTree(collectionPersister, alias);
+			WalkCollectionTree(collectionPersister, alias, alias);
 
 			IList<OuterJoinableAssociation> allAssociations = new List<OuterJoinableAssociation>(associations);
 

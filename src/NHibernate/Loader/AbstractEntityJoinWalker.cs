@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using NHibernate.Criterion;
 using NHibernate.Engine;
 using NHibernate.Loader.Criteria;
 using NHibernate.Persister.Entity;
@@ -29,7 +30,7 @@ namespace NHibernate.Loader
 
 		protected virtual void InitAll(SqlString whereString, SqlString orderByString, LockMode lockMode)
 		{
-			WalkEntityTree(persister, Alias);
+            WalkEntityTree(persister, CriteriaSpecification.RootAlias, Alias);
 			IList<OuterJoinableAssociation> allAssociations = new List<OuterJoinableAssociation>(associations);
 			allAssociations.Add(
 				new OuterJoinableAssociation(persister.EntityType, null, null, alias, JoinType.LeftOuterJoin, null, Factory,
@@ -41,7 +42,7 @@ namespace NHibernate.Loader
 
 		protected void InitProjection(SqlString projectionString, SqlString whereString, SqlString orderByString, SqlString groupByString, SqlString havingString, IDictionary<string, IFilter> enabledFilters, LockMode lockMode)
 		{
-			WalkEntityTree(persister, Alias);
+            WalkEntityTree(persister, CriteriaSpecification.RootAlias, Alias);
 			Persisters = new ILoadable[0];
 			InitStatementString(projectionString, whereString, orderByString, groupByString.ToString(), havingString, lockMode);
 		}
