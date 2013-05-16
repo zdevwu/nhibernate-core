@@ -279,29 +279,41 @@ namespace NHibernate.Loader.Criteria
                     }).Value;
             }
 
-		    return result == null ? JoinType.InnerJoin : result;
+            //JoinType.InnerJoin is the default value of JoinType
+		    return result;
 		}
 
-		public ICriteria GetCriteria(string path)
+		public ICriteria[] GetCriteria(string parentAlias, string path)
 		{
-			ICriteria result;
-            if (!path.Contains("|"))
+			var result = new List<ICriteria>();
+		    result.AddRange(associationPathCriteriaMap.Where(kv =>
+		        {
+		            var found = false;
+		            if (!path.Contains("|") && kv.Key.Contains("|"))
+		            {
+		                found = kv.Key.EndsWith("|" + path);
+		            }
+		            else
+		            {
+                        found = kv.Key == path;
+                    }
+                    if (found && 
+		                !string.IsNullOrEmpty(parentAlias) && 
+                        !parentAlias.Equals(CriteriaSpecification.RootAlias) &&
+                        kv.Key.Contains("|") &&
+                        kv.Value is CriteriaImpl.Subcriteria &&
+                        !((CriteriaImpl.Subcriteria)kv.Value).Parent.Alias.Equals(CriteriaSpecification.RootAlias))
+		            {
+		                found = ((CriteriaImpl.Subcriteria) kv.Value).Parent.Alias.Equals(parentAlias);
+		            }
+		            return found;
+		        }).Select(kv => kv.Value));
+		    logger.DebugFormat("getCriteria for path={0} crit={1}", path, result);
+            if (result.Count == 0)
             {
-                result = associationPathCriteriaMap.FirstOrDefault(kv =>
-                    {
-                        if (kv.Key.Contains("|"))
-                        {
-                            return kv.Key.EndsWith("|" + path);
-                        }
-                        return kv.Key == path;
-                    }).Value;
+                result.Add(null);
             }
-            else
-            {
-                associationPathCriteriaMap.TryGetValue(path, out result);
-            }
-			logger.DebugFormat("getCriteria for path={0} crit={1}", path, result);
-			return result;
+			return result.ToArray();
 		}
 
 		private void CreateAliasCriteriaMap()
@@ -748,19 +760,15 @@ namespace NHibernate.Loader.Criteria
 			return propertyName;
 		}
 
-		public SqlString[] GetWithClause(string path, IDictionary<string, IFilter> enabledFilters)
+		public SqlString GetWithClause(string alias, string path, IDictionary<string, IFilter> enabledFilters)
 		{
-		    var sqls = new List<SqlString>();
-            foreach (var key in withClauseMap.Keys.Where(p=>p.EndsWith(path)))
+		    path = string.IsNullOrEmpty(alias) ? path : alias + "|" + path;
+		    if (withClauseMap.ContainsKey(path))
 		    {
-                ICriterion crit = (ICriterion)withClauseMap[key];
-                sqls.Add(crit == null ? null : crit.ToSqlString(GetCriteria(key), this, enabledFilters));
+		        ICriterion crit = (ICriterion) withClauseMap[path];
+		        return crit == null ? null : crit.ToSqlString(GetCriteria(null, path).First(), this, enabledFilters);
 		    }
-            if (sqls.Count == 0)
-            {
-                sqls.Add(SqlString.Empty);
-            }
-            return sqls.ToArray();
+		    return null;
 		}
 
 		#region NH specific

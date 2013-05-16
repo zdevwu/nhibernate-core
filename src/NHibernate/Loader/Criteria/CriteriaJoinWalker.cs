@@ -8,6 +8,8 @@ using NHibernate.SqlCommand;
 using NHibernate.Type;
 using NHibernate.Util;
 
+using System.Linq;
+
 namespace NHibernate.Loader.Criteria
 {
 	/// <summary>
@@ -62,21 +64,21 @@ namespace NHibernate.Loader.Criteria
 			userAliases = ArrayHelper.ToStringArray(userAliasList);
 		}
 
-		protected override void WalkEntityTree(IOuterJoinLoadable persister, string alias, string path, int currentDepth)
+		protected override void WalkEntityTree(IOuterJoinLoadable persister, string userAlias, string sqlAlias, string path, int currentDepth)
 		{
 			// NH different behavior (NH-1476, NH-1760, NH-1785)
-			base.WalkEntityTree(persister, alias, path, currentDepth);
-			WalkCompositeComponentIdTree(persister, alias, path);
+            base.WalkEntityTree(persister, userAlias, sqlAlias, path, currentDepth);
+            WalkCompositeComponentIdTree(persister, userAlias, sqlAlias, path);
 		}
 
-		private void WalkCompositeComponentIdTree(IOuterJoinLoadable persister, string alias, string path)
+        private void WalkCompositeComponentIdTree(IOuterJoinLoadable persister, string userAlias, string sqlAlias, string path)
 		{
 			IType type = persister.IdentifierType;
 			string propertyName = persister.IdentifierPropertyName;
 			if (type != null && type.IsComponentType && !(type is EmbeddedComponentType))
 			{
-				ILhsAssociationTypeSqlInfo associationTypeSQLInfo = JoinHelper.GetIdLhsSqlInfo(alias, persister, Factory);
-				WalkComponentTree((IAbstractComponentType)type, 0, alias, SubPath(path, propertyName), 0, associationTypeSQLInfo);
+                ILhsAssociationTypeSqlInfo associationTypeSQLInfo = JoinHelper.GetIdLhsSqlInfo(sqlAlias, persister, Factory);
+                WalkComponentTree((IAbstractComponentType)type, 0, userAlias, sqlAlias, SubPath(path, propertyName), 0, associationTypeSQLInfo);
 			}
 		}
 
@@ -96,7 +98,7 @@ namespace NHibernate.Loader.Criteria
 		/// </summary>
 		protected override SqlString WhereFragment
 		{
-			get { return base.WhereFragment.Append(((IQueryable) Persister).FilterFragment(Alias, EnabledFilters)); }
+			get { return base.WhereFragment.Append(((Persister.Entity.IQueryable) Persister).FilterFragment(Alias, EnabledFilters)); }
 		}
 
 		public ISet<string> QuerySpaces
@@ -151,8 +153,9 @@ namespace NHibernate.Loader.Criteria
 			return fetchMode == FetchMode.Default;
 		}
 
-		protected override string GenerateTableAlias(int n, string path, IJoinable joinable)
+		protected override Dictionary<string, string> GenerateTableAlias(int n, string userAlias, string path, IJoinable joinable)
 		{
+            var sqlAliases = new Dictionary<string, string>();
 			bool shouldCreateUserAlias = joinable.ConsumesEntityAlias(); 
 			if(shouldCreateUserAlias == false  && joinable.IsCollection)
 			{
@@ -162,17 +165,26 @@ namespace NHibernate.Loader.Criteria
 			}
 			if (shouldCreateUserAlias)
 			{
-				ICriteria subcriteria = translator.GetCriteria(path);
-				string sqlAlias = subcriteria == null ? null : translator.GetSQLAlias(subcriteria);
-				if (sqlAlias != null)
-				{
-					userAliasList.Add(subcriteria.Alias); //alias may be null
-					return sqlAlias; //EARLY EXIT
-				}
-
-				userAliasList.Add(null);
+                ICriteria[] subcriteria = translator.GetCriteria(userAlias, path);
+			    foreach (var criteria in subcriteria)
+			    {
+                    string sqlAlias = criteria == null ? null : translator.GetSQLAlias(criteria);
+			        userAliasList.Add(sqlAlias != null ? criteria.Alias : null);
+                    if (sqlAlias != null)
+                    {
+                        sqlAliases.Add(sqlAlias, criteria.Alias);
+                    }
+                    else
+                    {
+                        sqlAliases.Add(StringHelper.GenerateAlias(joinable.Name, n + translator.SQLAliasCount), string.Empty);
+                    }
+			    }
 			}
-			return base.GenerateTableAlias(n + translator.SQLAliasCount, path, joinable);
+			else
+			{
+                sqlAliases.Add(StringHelper.GenerateAlias(joinable.Name, n + translator.SQLAliasCount), string.Empty);
+			}
+            return sqlAliases;
 		}
 
 		protected override string GenerateRootAlias(string tableName)
@@ -181,9 +193,9 @@ namespace NHibernate.Loader.Criteria
 			// NH: really not used (we are using a different ctor to support SubQueryCriteria)
 		}
 
-		protected override SqlString[] GetWithClause(string path)
+		protected override SqlString GetWithClause(string alias, string path)
 		{
-			return translator.GetWithClause(path, EnabledFilters);
+            return translator.GetWithClause(alias, path, EnabledFilters);
 		}
 	}
 }
